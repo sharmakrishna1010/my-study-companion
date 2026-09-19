@@ -44,6 +44,8 @@
 
 Unlike web interfaces where you have to take a screenshot, save it, upload it, and prompt the AI manually, this companion does it all in a **single keyboard shortcut** or a **right-click**.
 
+> **Note**: I fully vibecoded this entire project in an hour or two using Antigravity. I honestly have no idea how half of this works under the hood, so please don't ask me hehe. If it works, do not touch it!
+
 ---
 
 ## Key Features
