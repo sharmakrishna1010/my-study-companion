@@ -385,7 +385,7 @@ class Pet:
         # Row 1: Back facing (Up)
         # Row 2: Left facing
         # Row 3: Right facing
-        self.frames_idle = to_tk_list(sliced_grid[0])
+        self.frames_idle = to_tk_list(sliced_grid[0][:2])
         self.frames_walk_down = to_tk_list(sliced_grid[0])
         self.frames_walk_up = to_tk_list(sliced_grid[1])
         self.frames_walk_left = to_tk_list(sliced_grid[2])

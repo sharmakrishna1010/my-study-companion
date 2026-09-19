@@ -77,7 +77,7 @@ ANIMATION_SPEED_MS = 150
 # Row 3 -- spin / alert     (thinking)
 # ---------------------------------------------------------------------------
 
-ANIM_IDLE     = [0, 1, 2, 3]
+ANIM_IDLE     = [0, 1]
 ANIM_THINKING = [12, 13, 14, 15]
 ANIM_HAPPY    = [4, 5, 6, 7]
 ANIM_CONFUSED = [8, 9, 10, 11]
