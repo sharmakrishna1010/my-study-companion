@@ -1,8 +1,7 @@
 """
-chat.py -- Chat display with Markdown rendering.
+chat.py -- Bulletproof Chat Display with Fluid Kinetic Physics Scrolling & Keyboard Navigation.
 
-Colour palette: warm cream / ivory derived from the pixel-art pet sprite
-  (cream body, warm gold accents, soft lavender highlights).
+Colour palette: warm cream / ivory derived from the pixel-art pet sprite.
 """
 
 from __future__ import annotations
@@ -15,234 +14,285 @@ from tkinter import ttk
 # Palette  (pet-inspired: cream, warm gold, soft lavender)
 # ---------------------------------------------------------------------------
 BG_CHAT      = "#fdf8f0"   # warm ivory  — main chat background
-BG_USER_MSG  = "#ede0cb"   # warm tan    — user bubble
-BG_AI_MSG    = "#f5ede0"   # soft cream  — AI bubble
-BG_CODE      = "#e8d9c0"   # toasted parchment — code blocks
+BG_CODE      = "#ede0cb"   # toasted parchment — code blocks / inline code
 FG_MAIN      = "#3d2b1f"   # dark cocoa  — primary text
 FG_BOLD      = "#2a1a10"   # deepest brown for bold
 FG_CODE      = "#7c5cbf"   # soft lavender-purple (pet accent)
 FG_HEADING   = "#b87333"   # warm copper-gold (pet accent)
-FG_LABEL     = "#a08060"   # muted warm tan — sender names
-FG_SYSTEM    = "#b8a090"   # dusty rose-tan — system notices
+FG_LABEL     = "#8c603e"   # warm cocoa — sender names
+FG_SYSTEM    = "#a08060"   # muted tan — system notices
 FG_BULLET    = "#c8855a"   # amber rust — bullet markers
 BORDER       = "#ddd0bb"   # hairline border
 
-FONT_BASE    = ("Segoe UI", 10)
-FONT_BOLD    = ("Segoe UI", 10, "bold")
-FONT_ITALIC  = ("Segoe UI", 10, "italic")
-FONT_BI      = ("Segoe UI", 10, "bold italic")
-FONT_CODE    = ("Consolas", 9)
-FONT_H1      = ("Segoe UI", 14, "bold")
-FONT_H2      = ("Segoe UI", 12, "bold")
-FONT_H3      = ("Segoe UI", 11, "bold")
-FONT_LABEL   = ("Segoe UI", 8, "bold")
-FONT_SYSTEM  = ("Segoe UI", 8, "italic")
-
-
-# ---------------------------------------------------------------------------
-# Markdown renderer
-# ---------------------------------------------------------------------------
-
-def _render_markdown(text_widget: tk.Text, text: str, fg: str) -> None:
-    text_widget.tag_configure("normal",      font=FONT_BASE,   foreground=fg)
-    text_widget.tag_configure("bold",        font=FONT_BOLD,   foreground=FG_BOLD)
-    text_widget.tag_configure("italic",      font=FONT_ITALIC, foreground=fg)
-    text_widget.tag_configure("bold_italic", font=FONT_BI,     foreground=FG_BOLD)
-    text_widget.tag_configure("code_inline", font=FONT_CODE,   foreground=FG_CODE,
-                              background=BG_CODE)
-    text_widget.tag_configure("code_block",  font=FONT_CODE,   foreground=FG_CODE,
-                              background=BG_CODE, lmargin1=8, lmargin2=8,
-                              spacing1=2, spacing3=2)
-    text_widget.tag_configure("h1",  font=FONT_H1, foreground=FG_HEADING)
-    text_widget.tag_configure("h2",  font=FONT_H2, foreground=FG_HEADING)
-    text_widget.tag_configure("h3",  font=FONT_H3, foreground=FG_HEADING)
-    text_widget.tag_configure("bullet",        font=FONT_BASE, foreground=fg,
-                              lmargin1=12, lmargin2=24)
-    text_widget.tag_configure("bullet_marker", font=FONT_BOLD, foreground=FG_BULLET)
-    text_widget.tag_configure("numbered",      font=FONT_BASE, foreground=fg,
-                              lmargin1=12, lmargin2=28)
-
-    lines = text.split("\n")
-    in_code_block = False
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        if line.strip().startswith("```"):
-            in_code_block = not in_code_block
-            if not in_code_block:
-                text_widget.insert(tk.END, "\n")
-            i += 1
-            continue
-
-        if in_code_block:
-            text_widget.insert(tk.END, line + "\n", "code_block")
-            i += 1
-            continue
-
-        m_h3 = re.match(r"^###\s+(.*)", line)
-        m_h2 = re.match(r"^##\s+(.*)",  line)
-        m_h1 = re.match(r"^#\s+(.*)",   line)
-        if m_h1:
-            text_widget.insert(tk.END, m_h1.group(1) + "\n", "h1"); i += 1; continue
-        if m_h2:
-            text_widget.insert(tk.END, m_h2.group(1) + "\n", "h2"); i += 1; continue
-        if m_h3:
-            text_widget.insert(tk.END, m_h3.group(1) + "\n", "h3"); i += 1; continue
-
-        bullet = re.match(r"^[\-\*\•]\s+(.*)", line)
-        if bullet:
-            text_widget.insert(tk.END, "•  ", "bullet_marker")
-            _insert_inline(text_widget, bullet.group(1), fg)
-            text_widget.insert(tk.END, "\n")
-            i += 1; continue
-
-        numbered = re.match(r"^(\d+)[.)]\s+(.*)", line)
-        if numbered:
-            text_widget.insert(tk.END, numbered.group(1) + ".  ", "bullet_marker")
-            _insert_inline(text_widget, numbered.group(2), fg)
-            text_widget.insert(tk.END, "\n")
-            i += 1; continue
-
-        if line.strip() == "":
-            text_widget.insert(tk.END, "\n"); i += 1; continue
-
-        _insert_inline(text_widget, line, fg)
-        text_widget.insert(tk.END, "\n")
-        i += 1
-
-
-def _insert_inline(text_widget: tk.Text, text: str, fg: str) -> None:
-    pattern = re.compile(
-        r"(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)", re.DOTALL
-    )
-    cursor = 0
-    for m in pattern.finditer(text):
-        if m.start() > cursor:
-            text_widget.insert(tk.END, text[cursor:m.start()], "normal")
-        full = m.group(0)
-        if full.startswith("***"):
-            text_widget.insert(tk.END, m.group(2), "bold_italic")
-        elif full.startswith("**"):
-            text_widget.insert(tk.END, m.group(3), "bold")
-        elif full.startswith("*"):
-            text_widget.insert(tk.END, m.group(4), "italic")
-        elif full.startswith("`"):
-            text_widget.insert(tk.END, m.group(5), "code_inline")
-        cursor = m.end()
-    if cursor < len(text):
-        text_widget.insert(tk.END, text[cursor:], "normal")
-
-
-# ---------------------------------------------------------------------------
-# ChatDisplay widget
-# ---------------------------------------------------------------------------
 
 class ChatDisplay(tk.Frame):
-    """Scrollable warm-cream chat area with Markdown rendering."""
+    """Bulletproof scrollable chat display widget with kinetic scrolling & arrow key navigation."""
 
     def __init__(self, parent: tk.Widget, **kwargs):
         super().__init__(parent, bg=BG_CHAT, **kwargs)
 
-        self._canvas = tk.Canvas(self, bg=BG_CHAT, highlightthickness=0)
-        self._scrollbar = ttk.Scrollbar(
-            self, orient="vertical", command=self._canvas.yview
-        )
-        self._canvas.configure(yscrollcommand=self._scrollbar.set)
+        self._font_scale: float = 1.0
+        self._scroll_velocity: float = 0.0
+        self._scroll_job = None
 
-        self._inner = tk.Frame(self._canvas, bg=BG_CHAT)
-        self._inner_id = self._canvas.create_window(
-            (0, 0), window=self._inner, anchor="nw"
-        )
-
-        self._canvas.pack(side="left", fill="both", expand=True)
+        # Scrollbar
+        self._scrollbar = ttk.Scrollbar(self, orient="vertical")
         self._scrollbar.pack(side="right", fill="y")
 
-        self._inner.bind("<Configure>", self._on_inner_configure)
-        self._canvas.bind("<Configure>", self._on_canvas_configure)
-        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        # Main Text Widget
+        self._txt = tk.Text(
+            self,
+            bg=BG_CHAT,
+            fg=FG_MAIN,
+            wrap="word",
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            yscrollcommand=self._scrollbar.set,
+            padx=14,
+            pady=10,
+            cursor="arrow",
+        )
+        self._txt.pack(side="left", fill="both", expand=True)
+        self._scrollbar.config(command=self._txt.yview)
 
-        self._canvas_width = 440
+        # Configure initial tags
+        self._setup_tags()
 
-    def _on_inner_configure(self, _=None):
-        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+        # Keyboard Zoom Shortcuts (Ctrl+Plus, Ctrl+Minus, Ctrl+0)
+        parent.bind_all("<Control-plus>", lambda e: self.zoom_in())
+        parent.bind_all("<Control-equal>", lambda e: self.zoom_in())
+        parent.bind_all("<Control-minus>", lambda e: self.zoom_out())
+        parent.bind_all("<Control-0>", lambda e: self.reset_zoom())
 
-    def _on_canvas_configure(self, event):
-        self._canvas_width = event.width
-        self._canvas.itemconfig(self._inner_id, width=event.width)
+        # Fluid Kinetic MouseWheel Scrolling
+        self._txt.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<MouseWheel>", self._on_mousewheel)
 
-    def _on_mousewheel(self, event):
-        self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        # Keyboard Arrow Key & Page Navigation (works even when text is disabled!)
+        self._txt.bind("<Up>", lambda e: self._on_key_scroll(-2))
+        self._txt.bind("<Down>", lambda e: self._on_key_scroll(2))
+        self._txt.bind("<Prior>", lambda e: self._on_key_page(-1))  # PageUp
+        self._txt.bind("<Next>", lambda e: self._on_key_page(1))    # PageDown
+        self._txt.bind("<Home>", lambda e: self._on_key_home())
+        self._txt.bind("<End>", lambda e: self._on_key_end())
+
+        # Global Alt+Up / Alt+Down fallback
+        parent.bind_all("<Alt-Up>", lambda e: self._on_key_scroll(-2))
+        parent.bind_all("<Alt-Down>", lambda e: self._on_key_scroll(2))
 
     # ------------------------------------------------------------------
-    # Public API
+    # High-Precision MouseWheel & Trackpad Scrolling
+    # ------------------------------------------------------------------
+
+    def _on_mousewheel(self, event) -> str:
+        """High-precision, instant, zero-deadzone mousewheel & trackpad scrolling."""
+        raw_delta = event.delta
+        if raw_delta == 0:
+            return "break"
+
+        # Scale step units proportionally: 1 line per 40 delta units (handles trackpads & notched wheels)
+        if abs(raw_delta) >= 120:
+            units = int(-2 * (raw_delta / 120.0))
+        else:
+            units = -1 if raw_delta > 0 else 1
+
+        self._txt.yview_scroll(units, "units")
+        return "break"
+
+    # ------------------------------------------------------------------
+    # Keyboard Navigation
+    # ------------------------------------------------------------------
+
+    def _on_key_scroll(self, units: int) -> str:
+        self._txt.yview_scroll(units, "units")
+        return "break"
+
+    def _on_key_page(self, pages: int) -> str:
+        self._txt.yview_scroll(pages, "pages")
+        return "break"
+
+    def _on_key_home(self) -> str:
+        self._txt.yview_moveto(0.0)
+        return "break"
+
+    def _on_key_end(self) -> str:
+        self._txt.yview_moveto(1.0)
+        return "break"
+
+    # ------------------------------------------------------------------
+    # Tag Configuration & Dynamic Zooming
+    # ------------------------------------------------------------------
+
+    def _get_fonts(self) -> dict:
+        s = self._font_scale
+        return {
+            "base":   ("Segoe UI", max(8, int(10 * s))),
+            "bold":   ("Segoe UI", max(8, int(10 * s)), "bold"),
+            "italic": ("Segoe UI", max(8, int(10 * s)), "italic"),
+            "bi":     ("Segoe UI", max(8, int(10 * s)), "bold italic"),
+            "code":   ("Consolas", max(8, int(9 * s))),
+            "h1":     ("Segoe UI", max(11, int(14 * s)), "bold"),
+            "h2":     ("Segoe UI", max(10, int(12 * s)), "bold"),
+            "h3":     ("Segoe UI", max(9, int(11 * s)), "bold"),
+            "label_user": ("Segoe UI", max(8, int(9 * s)), "bold"),
+            "label_ai":   ("Segoe UI", max(8, int(9 * s)), "bold"),
+            "system":     ("Segoe UI", max(8, int(9 * s)), "italic"),
+        }
+
+    def _setup_tags(self) -> None:
+        f = self._get_fonts()
+        t = self._txt
+
+        t.tag_configure("user_header", font=f["label_user"], foreground=FG_LABEL, spacing1=10, spacing3=2)
+        t.tag_configure("ai_header",   font=f["label_ai"],   foreground=FG_HEADING, spacing1=12, spacing3=2)
+        t.tag_configure("system_msg",  font=f["system"],     foreground=FG_SYSTEM, justify="center", spacing1=8, spacing3=8)
+
+        t.tag_configure("normal",      font=f["base"],   foreground=FG_MAIN, spacing1=1, spacing3=2)
+        t.tag_configure("bold",        font=f["bold"],   foreground=FG_BOLD)
+        t.tag_configure("italic",      font=f["italic"], foreground=FG_MAIN)
+        t.tag_configure("bold_italic", font=f["bi"],     foreground=FG_BOLD)
+
+        t.tag_configure("code_inline", font=f["code"],   foreground=FG_CODE, background=BG_CODE)
+        t.tag_configure("code_block",  font=f["code"],   foreground=FG_CODE, background=BG_CODE,
+                        lmargin1=14, lmargin2=14, spacing1=3, spacing3=3)
+
+        t.tag_configure("h1", font=f["h1"], foreground=FG_HEADING, spacing1=8, spacing3=3)
+        t.tag_configure("h2", font=f["h2"], foreground=FG_HEADING, spacing1=6, spacing3=2)
+        t.tag_configure("h3", font=f["h3"], foreground=FG_HEADING, spacing1=4, spacing3=2)
+
+        t.tag_configure("bullet",        font=f["base"], foreground=FG_MAIN, lmargin1=12, lmargin2=24)
+        t.tag_configure("bullet_marker", font=f["bold"], foreground=FG_BULLET)
+        t.tag_configure("numbered",      font=f["base"], foreground=FG_MAIN, lmargin1=12, lmargin2=28)
+
+    def zoom_in(self) -> None:
+        if self._font_scale < 2.0:
+            self._font_scale = round(self._font_scale + 0.15, 2)
+            self._setup_tags()
+
+    def zoom_out(self) -> None:
+        if self._font_scale > 0.7:
+            self._font_scale = round(self._font_scale - 0.15, 2)
+            self._setup_tags()
+
+    def reset_zoom(self) -> None:
+        self._font_scale = 1.0
+        self._setup_tags()
+
+    # ------------------------------------------------------------------
+    # Public Append API
     # ------------------------------------------------------------------
 
     def append_user(self, text: str) -> None:
-        self._add_plain("You", text, FG_MAIN, BG_USER_MSG, anchor="e")
+        self._txt.configure(state="normal")
+        self._txt.insert(tk.END, "👤 You\n", "user_header")
+        self._txt.insert(tk.END, text.strip() + "\n", "normal")
+        self._txt.configure(state="disabled")
+        self.scroll_to_bottom()
 
     def append_ai(self, text: str) -> None:
-        self._add_markdown("Buddy", text, FG_MAIN, BG_AI_MSG)
+        self._txt.configure(state="normal")
+        self._txt.insert(tk.END, "🐾 Buddy\n", "ai_header")
+        self._render_markdown(text.strip())
+        self._txt.insert(tk.END, "\n")
+        self._txt.configure(state="disabled")
+        self.scroll_to_bottom()
 
     def append_system(self, text: str) -> None:
-        tk.Label(
-            self._inner, text=text,
-            bg=BG_CHAT, fg=FG_SYSTEM,
-            font=FONT_SYSTEM, wraplength=400, justify="center", pady=3,
-        ).pack(fill="x", padx=16, pady=2)
-        self._scroll_to_bottom()
+        self._txt.configure(state="normal")
+        self._txt.insert(tk.END, text.strip() + "\n", "system_msg")
+        self._txt.configure(state="disabled")
+        self.scroll_to_bottom()
 
     def clear(self) -> None:
-        for w in self._inner.winfo_children():
-            w.destroy()
+        self._txt.configure(state="normal")
+        self._txt.delete("1.0", tk.END)
+        self._txt.configure(state="disabled")
+
+    def scroll_to_bottom(self) -> None:
+        self._txt.update_idletasks()
+        self._txt.see(tk.END)
+        self.after(50, lambda: self._txt.see(tk.END))
 
     # ------------------------------------------------------------------
-    # Builders
+    # Markdown Parser
     # ------------------------------------------------------------------
 
-    def _add_plain(self, sender, text, fg, bg, anchor):
-        outer = tk.Frame(self._inner, bg=BG_CHAT)
-        outer.pack(fill="x", padx=10, pady=(6, 2))
+    def _render_markdown(self, text: str) -> None:
+        lines = text.split("\n")
+        in_code_block = False
+        i = 0
+        while i < len(lines):
+            line = lines[i]
 
-        tk.Label(outer, text=sender, bg=BG_CHAT, fg=FG_LABEL,
-                 font=FONT_LABEL).pack(anchor=anchor)
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                i += 1
+                continue
 
-        bubble = tk.Label(
-            outer, text=text, bg=bg, fg=fg, font=FONT_BASE,
-            wraplength=max(180, self._canvas_width - 60),
-            justify="left", padx=12, pady=8, relief="flat",
+            if in_code_block:
+                self._txt.insert(tk.END, line + "\n", "code_block")
+                i += 1
+                continue
+
+            m_h3 = re.match(r"^###\s+(.*)", line)
+            m_h2 = re.match(r"^##\s+(.*)",  line)
+            m_h1 = re.match(r"^#\s+(.*)",   line)
+            if m_h1:
+                self._txt.insert(tk.END, m_h1.group(1) + "\n", "h1")
+                i += 1
+                continue
+            if m_h2:
+                self._txt.insert(tk.END, m_h2.group(1) + "\n", "h2")
+                i += 1
+                continue
+            if m_h3:
+                self._txt.insert(tk.END, m_h3.group(1) + "\n", "h3")
+                i += 1
+                continue
+
+            bullet = re.match(r"^[\-\*\•]\s+(.*)", line)
+            if bullet:
+                self._txt.insert(tk.END, "•  ", "bullet_marker")
+                self._insert_inline(bullet.group(1))
+                self._txt.insert(tk.END, "\n")
+                i += 1
+                continue
+
+            numbered = re.match(r"^(\d+)[.)]\s+(.*)", line)
+            if numbered:
+                self._txt.insert(tk.END, numbered.group(1) + ".  ", "bullet_marker")
+                self._insert_inline(numbered.group(2))
+                self._txt.insert(tk.END, "\n")
+                i += 1
+                continue
+
+            if line.strip() == "":
+                self._txt.insert(tk.END, "\n")
+                i += 1
+                continue
+
+            self._insert_inline(line)
+            self._txt.insert(tk.END, "\n")
+            i += 1
+
+    def _insert_inline(self, text: str) -> None:
+        pattern = re.compile(
+            r"(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)", re.DOTALL
         )
-        bubble.pack(anchor=anchor)
-        self._scroll_to_bottom()
-
-    def _add_markdown(self, sender, text, fg, bg):
-        outer = tk.Frame(self._inner, bg=BG_CHAT)
-        outer.pack(fill="x", padx=10, pady=(6, 2))
-
-        tk.Label(outer, text=sender, bg=BG_CHAT, fg=FG_LABEL,
-                 font=FONT_LABEL).pack(anchor="w")
-
-        bubble = tk.Frame(outer, bg=bg, padx=4, pady=6)
-        bubble.pack(anchor="w", fill="x")
-
-        txt = tk.Text(
-            bubble, bg=bg, fg=fg, font=FONT_BASE,
-            wrap="word", relief="flat", borderwidth=0,
-            highlightthickness=0, state="normal",
-            cursor="arrow", width=1, height=1,
-            padx=8, pady=4, spacing1=1, spacing3=2,
-        )
-        txt.pack(fill="x", expand=True)
-
-        _render_markdown(txt, text, fg)
-        txt.configure(state="disabled")
-
-        txt.update_idletasks()
-        line_count = int(txt.index(tk.END).split(".")[0])
-        txt.configure(height=max(1, line_count))
-
-        self._scroll_to_bottom()
-
-    def _scroll_to_bottom(self) -> None:
-        self._inner.update_idletasks()
-        self._canvas.yview_moveto(1.0)
+        cursor = 0
+        for m in pattern.finditer(text):
+            if m.start() > cursor:
+                self._txt.insert(tk.END, text[cursor:m.start()], "normal")
+            full = m.group(0)
+            if full.startswith("***"):
+                self._txt.insert(tk.END, m.group(2), "bold_italic")
+            elif full.startswith("**"):
+                self._txt.insert(tk.END, m.group(3), "bold")
+            elif full.startswith("*"):
+                self._txt.insert(tk.END, m.group(4), "italic")
+            elif full.startswith("`"):
+                self._txt.insert(tk.END, m.group(5), "code_inline")
+            cursor = m.end()
+        if cursor < len(text):
+            self._txt.insert(tk.END, text[cursor:], "normal")

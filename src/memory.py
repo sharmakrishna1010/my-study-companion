@@ -1,19 +1,44 @@
 """
-memory.py -- In-memory session state for the Study Companion.
+memory.py -- In-memory session state & SQLite database integration for the Study Companion.
 
-Supports multiple screenshots per context window.
+Supports multiple screenshots per context window and persistent chat session storage.
 """
 
+from __future__ import annotations
+
 from PIL import Image
+import db
 
 
 class Memory:
-    """Holds all session state for one study session."""
+    """Holds all session state for study companion sessions."""
 
     def __init__(self):
         self._screenshots: list[Image.Image] = []
         self._messages: list[dict] = []   # {"role": "user"|"model", "text": str}
         self._pet_state: str = "IDLE"
+        self._session_id: str | None = None
+
+    # ------------------------------------------------------------------
+    # Database Sessions
+    # ------------------------------------------------------------------
+
+    def start_new_session(self, title: str | None = None) -> None:
+        """Reset session memory. Session is saved to DB lazily on first message."""
+        self._session_id = None
+        self._messages = []
+        self._screenshots = []
+
+    def load_session(self, session_id: str) -> list[dict]:
+        """Load an existing chat session from SQLite."""
+        self._session_id = session_id
+        db_msgs = db.load_session_messages(session_id)
+        self._messages = [{"role": m["role"], "text": m["content"]} for m in db_msgs]
+        self._screenshots = []  # Screenshots are per active live turn
+        return list(self._messages)
+
+    def get_current_session_id(self) -> str | None:
+        return self._session_id
 
     # ------------------------------------------------------------------
     # Screenshots (multi-screenshot support)
@@ -24,9 +49,8 @@ class Memory:
         self._screenshots.append(image)
 
     def set_screenshot(self, image: Image.Image) -> None:
-        """Replace all screenshots with one and reset conversation."""
+        """Replace all screenshots with one."""
         self._screenshots = [image]
-        self._messages = []
 
     def remove_screenshot(self, index: int) -> None:
         """Remove the screenshot at the given index."""
@@ -54,13 +78,19 @@ class Memory:
         assert role in ("user", "model"), f"Unknown role: {role}"
         self._messages.append({"role": role, "text": text})
 
+        # Lazy creation of session in DB on first message
+        if self._session_id is None:
+            self._session_id = db.create_session()
+
+        db.save_message(self._session_id, role, text)
+
     def get_history(self) -> list[dict]:
         return list(self._messages)
 
     def clear_context(self) -> None:
-        """Clear all screenshots and conversation history."""
+        """Clear all screenshots and start a fresh session context."""
         self._screenshots = []
-        self._messages = []
+        self.start_new_session()
 
     # ------------------------------------------------------------------
     # Pet state

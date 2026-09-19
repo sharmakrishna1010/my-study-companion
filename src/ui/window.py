@@ -1,10 +1,7 @@
 """
-window.py -- Study Companion chat window.
+window.py -- Study Companion chat window with History Drawer, Text Zoom, Thumbnail Cross Buttons, & Interrupt Thinking.
 
-Colour scheme: warm cream / ivory inspired by the pixel-art pet sprite
-  (cream body  →  #fdf8f0 backgrounds
-   warm gold   →  #c8855a / #b87333 accents
-   soft purple →  #9b8ec4 lavender highlights)
+Colour scheme: warm cream / ivory inspired by the pixel-art pet sprite.
 """
 
 from __future__ import annotations
@@ -15,6 +12,7 @@ from tkinter import messagebox, ttk
 from PIL import Image, ImageTk
 
 import config
+import db
 from ui.chat import ChatDisplay
 
 # ---------------------------------------------------------------------------
@@ -28,14 +26,14 @@ BORDER      = "#d4bfa0"   # warm border hairline
 ACCENT      = "#c8855a"   # amber-rust   — primary accent (pet warm tones)
 ACCENT2     = "#9b8ec4"   # soft lavender — secondary accent (pet purple)
 GREEN       = "#7aab8a"   # sage green   — send button
-RED_SOFT    = "#c4736a"   # dusty rose   — danger / clear
+RED_SOFT    = "#c4736a"   # dusty rose   — danger / stop / clear
 YELLOW      = "#e8b84e"   # warm gold
 FG          = "#3d2b1f"   # dark cocoa   — primary text
 FG2         = "#7a6555"   # warm brown   — secondary text
 FG3         = "#b09a88"   # muted tan    — metadata / placeholders
 
-FONT_TITLE  = ("Segoe UI", 13, "bold")
-FONT_SUB    = ("Segoe UI", 9)
+FONT_TITLE  = ("Segoe UI", 12, "bold")
+FONT_SUB    = ("Segoe UI", 8)
 FONT_BTN    = ("Segoe UI", 9, "bold")
 FONT_BADGE  = ("Segoe UI", 8)
 FONT_INPUT  = ("Segoe UI", 10)
@@ -84,11 +82,17 @@ class ChatWindow:
         self._model_var = tk.StringVar(value=config.GEMINI_MODEL)
         self._ss_count_var = tk.StringVar(value="")
         self._sending = False
+        self._interrupted = False
 
+        self._send_btn: tk.Button | None = None
         self._thumb_widgets: list[tk.Frame] = []
         self._thumb_imgs: list[ImageTk.PhotoImage] = []
         self._thumb_strip: tk.Frame | None = None
         self._ss_canvas: tk.Canvas | None = None
+
+        self._history_panel: tk.Frame | None = None
+        self._history_visible = False
+        self._history_sessions: list[dict] = []
 
     # ------------------------------------------------------------------
     # Show / hide
@@ -122,113 +126,80 @@ class ChatWindow:
         self._window = win
         win.title("Study Buddy")
         win.configure(bg=BG)
-        win.geometry(f"{config.CHAT_WINDOW_WIDTH}x{config.CHAT_WINDOW_HEIGHT}")
-        win.minsize(400, 520)
+        win.geometry("500x640")
+        win.minsize(420, 560)
         win.resizable(True, True)
         win.attributes("-topmost", True)
         win.protocol("WM_DELETE_WINDOW", self.hide)
 
         # ================================================================
-        # HEADER  — warm cream panel
+        # 1. HEADER (DOCKS TOP)
         # ================================================================
-        header = tk.Frame(win, bg=BG2, pady=10)
-        header.pack(fill="x")
-        tk.Frame(win, bg=BORDER, height=1).pack(fill="x")
+        header = tk.Frame(win, bg=BG2, pady=6)
+        header.pack(side="top", fill="x")
+        tk.Frame(win, bg=BORDER, height=1).pack(side="top", fill="x")
 
         row = tk.Frame(header, bg=BG2)
-        row.pack(fill="x", padx=14)
+        row.pack(fill="x", padx=10)
 
-        tk.Label(row, text="🐾", bg=BG2, fg=FG,
-                 font=("Segoe UI", 22)).pack(side="left")
+        tk.Label(row, text="🐾", bg=BG2, fg=FG, font=("Segoe UI", 18)).pack(side="left")
 
         col = tk.Frame(row, bg=BG2)
-        col.pack(side="left", padx=(8, 0))
-        tk.Label(col, text="Study Buddy", bg=BG2, fg=FG,
-                 font=FONT_TITLE).pack(anchor="w")
-        tk.Label(col, text="Your pixel-art study companion ✨",
-                 bg=BG2, fg=FG2, font=FONT_SUB).pack(anchor="w")
+        col.pack(side="left", padx=(6, 0))
+        tk.Label(col, text="Study Buddy", bg=BG2, fg=FG, font=FONT_TITLE).pack(anchor="w")
+        tk.Label(col, text="Your study companion ✨", bg=BG2, fg=FG2, font=FONT_SUB).pack(anchor="w")
 
-        # Close
+        # Right side header buttons
         tk.Button(
             row, text="✕", command=self.hide,
             bg=BG2, fg=FG3, activebackground=BG3, activeforeground=RED_SOFT,
-            relief="flat", cursor="hand2", font=("Segoe UI", 13),
-        ).pack(side="right")
+            relief="flat", cursor="hand2", font=("Segoe UI", 11),
+        ).pack(side="right", padx=(4, 0))
 
-        # Model badge
+        # Text Zoom buttons (A- / A+)
+        _btn(row, "A+", lambda: self._chat.zoom_in() if self._chat else None,
+             BG3, fg=FG, padx=6, pady=1).pack(side="right", padx=(2, 0))
+        _btn(row, "A-", lambda: self._chat.zoom_out() if self._chat else None,
+             BG3, fg=FG, padx=6, pady=1).pack(side="right", padx=(4, 0))
+
+        # New Chat button
+        _btn(row, "➕ New", self._start_new_chat,
+             ACCENT, fg="#fdf8f0", padx=7, pady=1).pack(side="right", padx=(4, 0))
+
+        # History drawer toggle button
+        _btn(row, "📜 History", self._toggle_history_panel,
+             ACCENT2, fg="#fdf8f0", padx=7, pady=1).pack(side="right", padx=(4, 0))
+
+        # Sub-row for model badge
+        row2 = tk.Frame(header, bg=BG2)
+        row2.pack(fill="x", padx=10, pady=(2, 0))
         tk.Label(
-            row, textvariable=self._model_var,
-            bg=BG3, fg=ACCENT2, font=FONT_BADGE, padx=7, pady=2,
-        ).pack(side="right", padx=(0, 10))
-        tk.Label(row, text="via", bg=BG2, fg=FG3,
-                 font=FONT_BADGE).pack(side="right")
+            row2, textvariable=self._model_var,
+            bg=BG3, fg=ACCENT2, font=FONT_BADGE, padx=6, pady=1,
+        ).pack(side="right")
+        tk.Label(row2, text="via ", bg=BG2, fg=FG3, font=FONT_BADGE).pack(side="right")
 
         # ================================================================
-        # SCREENSHOT PANEL
+        # 2. BOTTOM PANELS (STATUS BAR + INPUT ENTRY - DOCKS BOTTOM FIRST!)
         # ================================================================
-        ss_panel = tk.Frame(win, bg=BG, pady=6)
-        ss_panel.pack(fill="x", padx=12)
+        status_bar = tk.Frame(win, bg=BG2)
+        status_bar.pack(side="bottom", fill="x")
 
-        # Top row: label + buttons
-        ss_top = tk.Frame(ss_panel, bg=BG)
-        ss_top.pack(fill="x", pady=(0, 5))
+        tk.Label(status_bar, textvariable=self._status_var,
+                 bg=BG2, fg=FG3, font=FONT_STATUS, anchor="w",
+                 ).pack(side="left", padx=10, pady=(0, 4))
 
-        tk.Label(ss_top, text="📸  Screenshots", bg=BG, fg=FG2,
-                 font=FONT_BTN).pack(side="left")
+        tk.Label(status_bar, textvariable=self._ss_count_var,
+                 bg=BG2, fg=ACCENT2, font=FONT_STATUS, anchor="e",
+                 ).pack(side="right", padx=10, pady=(0, 4))
 
-        _btn(ss_top, "+ Add", self._add_screenshot,
-             ACCENT2, fg="#fdf8f0", padx=10, pady=2).pack(side="right", padx=(3, 0))
-        _btn(ss_top, "↺ Retake", self._retake,
-             BG3, fg=FG, padx=10, pady=2).pack(side="right", padx=(3, 0))
-        _btn(ss_top, "✕ Clear All", self._clear_context,
-             RED_SOFT, fg="#fdf8f0", padx=10, pady=2).pack(side="right")
-
-        # Scrollable horizontal thumbnail strip
-        strip_wrap = tk.Frame(ss_panel, bg=BG4, relief="flat")
-        strip_wrap.pack(fill="x")
-
-        ss_canvas = tk.Canvas(strip_wrap, bg=BG4, highlightthickness=0,
-                              height=THUMB_H + 32)
-        ss_canvas.pack(side="top", fill="x", expand=True)
-
-        ss_hbar = ttk.Scrollbar(strip_wrap, orient="horizontal",
-                                command=ss_canvas.xview)
-        ss_hbar.pack(side="bottom", fill="x")
-        ss_canvas.configure(xscrollcommand=ss_hbar.set)
-
-        self._thumb_strip = tk.Frame(ss_canvas, bg=BG4)
-        _id = ss_canvas.create_window((0, 0), window=self._thumb_strip, anchor="nw")
-        self._thumb_strip.bind(
-            "<Configure>",
-            lambda e: ss_canvas.configure(scrollregion=ss_canvas.bbox("all")),
-        )
-        self._ss_canvas = ss_canvas
-
-        # ================================================================
-        # DIVIDER
-        # ================================================================
-        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", pady=(6, 0))
-
-        # ================================================================
-        # CHAT AREA
-        # ================================================================
-        self._chat = ChatDisplay(win)
-        self._chat.pack(fill="both", expand=True)
-        self._chat.append_system(
-            "👋  Hi! I'm Buddy. Press Ctrl+Alt+S to capture your screen "
-            "then ask me anything about what you're studying!"
-        )
-
-        # ================================================================
-        # INPUT AREA
-        # ================================================================
-        tk.Frame(win, bg=BORDER, height=1).pack(fill="x")
+        tk.Frame(win, bg=BORDER, height=1).pack(side="bottom", fill="x")
 
         input_panel = tk.Frame(win, bg=BG2, pady=8)
-        input_panel.pack(fill="x")
+        input_panel.pack(side="bottom", fill="x")
 
         input_row = tk.Frame(input_panel, bg=BG2)
-        input_row.pack(fill="x", padx=12)
+        input_row.pack(fill="x", padx=10)
 
         self._input_entry = tk.Entry(
             input_row,
@@ -240,31 +211,207 @@ class ChatWindow:
             highlightbackground=BORDER,
             highlightcolor=ACCENT,
         )
-        self._input_entry.pack(side="left", fill="x", expand=True,
-                               ipady=8, padx=(0, 8))
-        self._input_entry.bind("<Return>", lambda _e: self._send())
+        self._input_entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 6))
+        self._input_entry.bind("<Return>", lambda _e: self._on_action_btn_click())
 
-        _btn(input_row, "Send ➤", self._send,
-             GREEN, fg="#fdf8f0", padx=16, pady=6).pack(side="left")
+        # Dynamic Send / Stop Button
+        self._send_btn = tk.Button(
+            input_row, text="Send ➤", command=self._on_action_btn_click,
+            bg=GREEN, fg="#fdf8f0", activebackground=_lighten(GREEN), activeforeground="#fdf8f0",
+            relief="flat", cursor="hand2", font=FONT_BTN, padx=14, pady=5,
+        )
+        self._send_btn.pack(side="left")
 
         # ================================================================
-        # STATUS BAR
+        # 3. SCREENSHOT PANEL (DOCKS TOP BELOW HEADER)
         # ================================================================
-        status_bar = tk.Frame(win, bg=BG2)
-        status_bar.pack(fill="x")
+        ss_panel = tk.Frame(win, bg=BG, pady=4)
+        ss_panel.pack(side="top", fill="x", padx=10)
 
-        tk.Label(status_bar, textvariable=self._status_var,
-                 bg=BG2, fg=FG3, font=FONT_STATUS, anchor="w",
-                 ).pack(side="left", padx=12, pady=(0, 5))
+        # Top row: label + buttons
+        ss_top = tk.Frame(ss_panel, bg=BG)
+        ss_top.pack(fill="x", pady=(0, 4))
 
-        tk.Label(status_bar, textvariable=self._ss_count_var,
-                 bg=BG2, fg=ACCENT2, font=FONT_STATUS, anchor="e",
-                 ).pack(side="right", padx=12, pady=(0, 5))
+        tk.Label(ss_top, text="📸  Screenshots", bg=BG, fg=FG2, font=FONT_BTN).pack(side="left")
+
+        _btn(ss_top, "+ Add", self._add_screenshot,
+             ACCENT2, fg="#fdf8f0", padx=8, pady=1).pack(side="right", padx=(3, 0))
+        _btn(ss_top, "↺ Retake", self._retake,
+             BG3, fg=FG, padx=8, pady=1).pack(side="right", padx=(3, 0))
+        _btn(ss_top, "✕ Clear All", self._clear_screenshots,
+             RED_SOFT, fg="#fdf8f0", padx=8, pady=1).pack(side="right")
+
+        # Scrollable horizontal thumbnail strip
+        strip_wrap = tk.Frame(ss_panel, bg=BG4, relief="flat")
+        strip_wrap.pack(fill="x")
+
+        ss_canvas = tk.Canvas(strip_wrap, bg=BG4, highlightthickness=0, height=THUMB_H + 32)
+        ss_canvas.pack(side="top", fill="x", expand=True)
+
+        ss_hbar = ttk.Scrollbar(strip_wrap, orient="horizontal", command=ss_canvas.xview)
+        ss_hbar.pack(side="bottom", fill="x")
+        ss_canvas.configure(xscrollcommand=ss_hbar.set)
+
+        self._thumb_strip = tk.Frame(ss_canvas, bg=BG4)
+        _id = ss_canvas.create_window((0, 0), window=self._thumb_strip, anchor="nw")
+        self._thumb_strip.bind(
+            "<Configure>",
+            lambda e: ss_canvas.configure(scrollregion=ss_canvas.bbox("all")),
+        )
+        self._ss_canvas = ss_canvas
+
+        tk.Frame(win, bg=BORDER, height=1).pack(side="top", fill="x", pady=(4, 0))
+
+        # ================================================================
+        # 4. MAIN CHAT CONTENT AREA (EXPANDS TO FILL REMAINING MIDDLE SPACE)
+        # ================================================================
+        content_container = tk.Frame(win, bg=BG)
+        content_container.pack(side="top", fill="both", expand=True)
+
+        # Chat display widget
+        self._chat = ChatDisplay(content_container)
+        self._chat.pack(fill="both", expand=True)
+
+        # Load existing messages if session has history, else system welcome
+        msgs = self._memory.get_history()
+        if msgs:
+            for m in msgs:
+                if m["role"] == "user":
+                    self._chat.append_user(m["text"])
+                else:
+                    self._chat.append_ai(m["text"])
+        else:
+            self._chat.append_system(
+                "👋  Hi! I'm Buddy. Press Ctrl+Alt+S to capture your screen "
+                "or Ctrl+Alt+E to explain it instantly!"
+            )
+
+        # History panel container (hidden overlay)
+        self._history_panel = tk.Frame(content_container, bg=BG2, highlightthickness=1, highlightbackground=BORDER)
 
         self._input_entry.focus_set()
 
     # ------------------------------------------------------------------
-    # Screenshot strip
+    # History Drawer Panel
+    # ------------------------------------------------------------------
+
+    def _toggle_history_panel(self) -> None:
+        if self._history_panel is None:
+            return
+        if self._history_visible:
+            self._history_panel.place_forget()
+            self._history_visible = False
+        else:
+            self._render_history_panel()
+            self._history_panel.place(x=0, y=0, relwidth=1.0, relheight=1.0)
+            self._history_panel.lift()
+            self._history_visible = True
+
+    def _render_history_panel(self) -> None:
+        if self._history_panel is None:
+            return
+        for w in self._history_panel.winfo_children():
+            w.destroy()
+
+        # Header of history panel
+        head = tk.Frame(self._history_panel, bg=BG3, pady=8, padx=12)
+        head.pack(fill="x")
+
+        tk.Label(head, text="📜 Chat History", bg=BG3, fg=FG, font=FONT_TITLE).pack(side="left")
+
+        tk.Button(
+            head, text="✕ Close", command=self._toggle_history_panel,
+            bg=BG3, fg=RED_SOFT, activebackground=BG4, activeforeground=RED_SOFT,
+            relief="flat", cursor="hand2", font=FONT_BTN,
+        ).pack(side="right")
+
+        # Session Listbox + Scrollbar
+        list_frame = tk.Frame(self._history_panel, bg=BG2, padx=10, pady=10)
+        list_frame.pack(fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical")
+        scrollbar.pack(side="right", fill="y")
+
+        lb = tk.Listbox(
+            list_frame,
+            bg=BG, fg=FG,
+            selectbackground=ACCENT, selectforeground="#fdf8f0",
+            font=("Segoe UI", 10),
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            yscrollcommand=scrollbar.set,
+            activestyle="none",
+        )
+        lb.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=lb.yview)
+
+        sessions = db.get_all_sessions()
+        self._history_sessions = sessions
+
+        if not sessions:
+            lb.insert(tk.END, "  No saved chat sessions yet")
+        else:
+            for s in sessions:
+                lb.insert(tk.END, f"  💬 {s['title']} ({s['updated_at']})")
+
+        # Buttons footer in history drawer
+        btn_bar = tk.Frame(self._history_panel, bg=BG3, pady=8, padx=12)
+        btn_bar.pack(fill="x")
+
+        _btn(btn_bar, "Load Selected", lambda: self._on_load_selected_session(lb),
+             GREEN, fg="#fdf8f0", padx=12, pady=4).pack(side="left")
+
+        _btn(btn_bar, "Delete Selected", lambda: self._on_delete_selected_session(lb),
+             RED_SOFT, fg="#fdf8f0", padx=12, pady=4).pack(side="right")
+
+    def _on_load_selected_session(self, lb: tk.Listbox) -> None:
+        sel = lb.curselection()
+        if not sel or not self._history_sessions:
+            return
+        idx = sel[0]
+        if idx < len(self._history_sessions):
+            session_id = self._history_sessions[idx]["id"]
+            self._switch_to_session(session_id)
+
+    def _on_delete_selected_session(self, lb: tk.Listbox) -> None:
+        sel = lb.curselection()
+        if not sel or not self._history_sessions:
+            return
+        idx = sel[0]
+        if idx < len(self._history_sessions):
+            session_id = self._history_sessions[idx]["id"]
+            db.delete_session(session_id)
+            if session_id == self._memory.get_current_session_id():
+                self._start_new_chat()
+            self._render_history_panel()
+
+    def _switch_to_session(self, session_id: str) -> None:
+        msgs = self._memory.load_session(session_id)
+        if self._chat:
+            self._chat.clear()
+            if msgs:
+                for m in msgs:
+                    if m["role"] == "user":
+                        self._chat.append_user(m["text"])
+                    else:
+                        self._chat.append_ai(m["text"])
+            else:
+                self._chat.append_system("Empty chat session.")
+        self._refresh_thumb_strip()
+        self._toggle_history_panel()
+
+    def _start_new_chat(self) -> None:
+        self._memory.start_new_session()
+        if self._chat:
+            self._chat.clear()
+            self._chat.append_system("Started a new chat session! Press Ctrl+Alt+S to capture screen.")
+        self._refresh_thumb_strip()
+        if self._history_visible and self._history_panel:
+            self._render_history_panel()
+
+    # ------------------------------------------------------------------
+    # Screenshot strip (with explicit '✕' cross buttons)
     # ------------------------------------------------------------------
 
     def _refresh_thumb_strip(self) -> None:
@@ -280,7 +427,7 @@ class ChatWindow:
             tk.Label(
                 self._thumb_strip,
                 text="No screenshots yet — press Ctrl+Alt+S to capture",
-                bg=BG4, fg=FG3, font=FONT_STATUS, padx=16, pady=22,
+                bg=BG4, fg=FG3, font=FONT_STATUS, padx=16, pady=16,
             ).pack(side="left")
         else:
             for idx, img in enumerate(shots):
@@ -295,32 +442,35 @@ class ChatWindow:
         self._thumb_imgs.append(tk_img)
 
         card = tk.Frame(self._thumb_strip, bg=BG3,
-                        padx=3, pady=3, relief="flat",
+                        padx=4, pady=3, relief="flat",
                         highlightthickness=1, highlightbackground=BORDER)
-        card.pack(side="left", padx=5, pady=5)
+        card.pack(side="left", padx=4, pady=4)
 
-        tk.Label(card, text=f"#{idx + 1}", bg=BG3, fg=ACCENT,
-                 font=FONT_BADGE).pack(anchor="nw")
+        # Top row: label (#1, #2) on left, explicit '✕' cross button on right
+        top_row = tk.Frame(card, bg=BG3)
+        top_row.pack(fill="x", pady=(0, 2))
 
-        tk.Label(card, image=tk_img, bg=BG3, cursor="hand2").pack()
+        tk.Label(top_row, text=f"#{idx + 1}", bg=BG3, fg=ACCENT,
+                 font=FONT_BADGE).pack(side="left")
 
         i = idx
-        tk.Button(
-            card, text="✕ remove",
+        btn_x = tk.Button(
+            top_row, text="✕",
             command=lambda: self._remove_screenshot(i),
-            bg=BG3, fg=RED_SOFT, relief="flat", cursor="hand2",
-            font=("Segoe UI", 7),
-        ).pack(fill="x")
+            bg=BG3, fg=RED_SOFT, activebackground=BG4, activeforeground=RED_SOFT,
+            relief="flat", cursor="hand2", font=("Segoe UI", 9, "bold"),
+            padx=2, pady=0,
+        )
+        btn_x.pack(side="right")
+
+        # Thumbnail image below top row
+        tk.Label(card, image=tk_img, bg=BG3, cursor="hand2").pack()
 
         self._thumb_widgets.append(card)
 
     def _remove_screenshot(self, idx: int) -> None:
         self._memory.remove_screenshot(idx)
         self._refresh_thumb_strip()
-        if not self._memory.has_screenshot() and self._chat:
-            self._chat.append_system(
-                "Screenshot removed. Context now has no screenshots."
-            )
 
     def _update_ss_count(self) -> None:
         n = self._memory.screenshot_count()
@@ -332,7 +482,7 @@ class ChatWindow:
             )
 
     # ------------------------------------------------------------------
-    # Actions
+    # Actions & Generation Control
     # ------------------------------------------------------------------
 
     def _add_screenshot(self) -> None:
@@ -343,15 +493,31 @@ class ChatWindow:
         self._on_retake(add_only=False)
         self._refresh_thumb_strip()
 
-    def _clear_context(self) -> None:
-        self._memory.clear_context()
+    def _clear_screenshots(self) -> None:
+        self._memory._screenshots.clear()
         if self._chat:
-            self._chat.clear()
-            self._chat.append_system(
-                "Context cleared. Press Ctrl+Alt+S to start fresh."
-            )
+            self._chat.append_system("Screenshots cleared for current session.")
         self._refresh_thumb_strip()
+
+    def _on_action_btn_click(self) -> None:
+        """Handle click on the dynamic Send / Stop button."""
+        if self._sending:
+            self._interrupt_thinking()
+        else:
+            self._send()
+
+    def _interrupt_thinking(self) -> None:
+        """Interrupt active AI generation."""
+        if not self._sending:
+            return
+        self._interrupted = True
+        self._sending = False
+        if self._send_btn:
+            self._send_btn.config(text="Send ➤", bg=GREEN, activebackground=_lighten(GREEN))
+        self._set_status("Generation stopped")
         self._on_pet_state("IDLE")
+        if self._chat:
+            self._chat.append_system("⏹  AI generation stopped.")
 
     def _send(self) -> None:
         if self._sending:
@@ -359,25 +525,23 @@ class ChatWindow:
         question = self._input_var.get().strip()
         if not question:
             return
-        if not self._memory.has_screenshot():
-            messagebox.showinfo(
-                "No Screenshot",
-                "Capture a screenshot first (Ctrl+Alt+S) or use + Add.",
-            )
-            return
 
         self._input_var.set("")
-        self._chat.append_user(question)
+        if self._chat:
+            self._chat.append_user(question)
 
-        # Add to memory FIRST, then snapshot history WITHOUT the just-added msg
-        # (the current question is sent separately as the new user turn to Gemini)
+        # Add message to memory & DB FIRST
         self._memory.add_message("user", question)
-        history_snapshot = self._memory.get_history()[:-1]  # all previous turns
+        history_snapshot = self._memory.get_history()[:-1]
         screenshots_snapshot = self._memory.get_screenshots()
 
         self._set_status("Buddy is thinking...")
         self._on_pet_state("THINKING")
         self._sending = True
+        self._interrupted = False
+
+        if self._send_btn:
+            self._send_btn.config(text="⏹ Stop", bg=RED_SOFT, activebackground=_lighten(RED_SOFT))
 
         threading.Thread(
             target=self._ask_ai,
@@ -393,6 +557,8 @@ class ChatWindow:
             self._root.after(0, self._on_ai_error, str(exc))
 
     def _on_ai_success(self, reply: str, model_used: str) -> None:
+        if self._interrupted:
+            return
         self._memory.add_message("model", reply)
         if self._chat:
             self._chat.append_ai(reply)
@@ -400,14 +566,20 @@ class ChatWindow:
         self._set_status("Ready")
         self._on_pet_state("HAPPY")
         self._sending = False
+        if self._send_btn:
+            self._send_btn.config(text="Send ➤", bg=GREEN, activebackground=_lighten(GREEN))
 
     def _on_ai_error(self, error: str) -> None:
+        if self._interrupted:
+            return
         print(f"[window] AI error: {error}")
         if self._chat:
             self._chat.append_system(f"⚠  {error[:300]}")
         self._set_status("Error — try again")
         self._on_pet_state("CONFUSED")
         self._sending = False
+        if self._send_btn:
+            self._send_btn.config(text="Send ➤", bg=GREEN, activebackground=_lighten(GREEN))
 
     def auto_ask(self, question: str) -> None:
         """
@@ -431,6 +603,9 @@ class ChatWindow:
         self._set_status("Buddy is thinking...")
         self._on_pet_state("THINKING")
         self._sending = True
+        self._interrupted = False
+        if self._send_btn:
+            self._send_btn.config(text="⏹ Stop", bg=RED_SOFT, activebackground=_lighten(RED_SOFT))
         threading.Thread(
             target=self._ask_ai,
             args=(question, screenshots_snapshot, history_snapshot),

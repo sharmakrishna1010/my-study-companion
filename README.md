@@ -30,8 +30,10 @@
   - [Installation & Setup](#installation--setup)
   - [Getting a Gemini API Key](#getting-a-gemini-api-key)
 - [How It Works](#how-it-works)
+  - [Pet Animation & FSM System](#pet-animation--fsm-system)
+  - [Persistent SQLite Chat History](#persistent-sqlite-chat-history)
   - [Automatic Model Fallback System](#automatic-model-fallback-system)
-  - [Custom Markdown Rendering](#custom-markdown-rendering)
+  - [Custom Markdown Rendering & Zoom](#custom-markdown-rendering--zoom)
   - [Multi-Screenshot Context](#multi-screenshot-context)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
@@ -50,14 +52,21 @@ Unlike web interfaces where you have to take a screenshot, save it, upload it, a
 
 ## Key Features
 
-- **Floating 2D Pixel-Art Pet**: Transparent, borderless window with smooth multi-frame animations (idle, walk, thinking, happy, sleeping). Drag and place him anywhere on your desktop.
+- **Text-Only & Visual Q&A**: Ask study questions directly at any time without needing a screenshot, or attach visual screenshots when you need code, diagram, or textbook explanations.
+- **Pacing Thinking Animation**: When processing your question, Buddy paces back and forth (left and right) in a small area on your desktop.
+- **Interrupt AI Generation**: Click **Stop** at any time during response generation to immediately abort the AI request and return Buddy to idle state.
+- **Individual Screenshot Management**: Each thumbnail card features an explicit **✕** button to remove specific screenshots from context without clearing all.
+- **FSM-Driven Walking Behavior**: Modular Finite State Machine (FSM) architecture. In idle state, the pet periodically decides to walk in 8 directions across your screen with smooth, mirrored side-walking animations while remaining strictly within screen boundaries.
+- **Dynamic Pet Resizing**: Right-click the pet and pick **Pet Scale** to resize the sprite anywhere from 1.0x up to 6.0x.
 - **One-Shot "Explain Screen"**: Right-click the pet and click **Explain Screen** (or press `Ctrl + Alt + E`) to snap the current screen and have Gemini explain it immediately without typing a single word.
+- **Persistent SQLite Chat History**: All conversations are automatically saved to a lightweight SQLite database (`study_companion.db`). Reopen past chat sessions or delete old threads using the **History** drawer. Empty session drafts are automatically purged.
+- **Dynamic Text Zoom**: Scale response typography instantly using the **A-** / **A+** header buttons or keyboard shortcuts (`Ctrl + Plus`, `Ctrl + Minus`, `Ctrl + 0`).
+- **High-Precision Trackpad & Arrow Key Navigation**: Instant, zero-deadzone trackpad/mousewheel scrolling along with full keyboard arrow key (`Up`/`Down`) and page navigation.
 - **Global System Hotkeys**: Works from anywhere on your computer, even while gaming or working in full-screen IDEs.
 - **Multi-Screenshot Context**: Add multiple screenshots across different windows, tabs, or editor files into one session to build rich visual context for your questions.
 - **Intelligent Model Fallback**: If you hit quota or rate limits (HTTP 429), the companion automatically falls back to secondary models (`gemini-2.5-flash` -> `gemini-2.5-flash-lite` -> `gemini-3.5-flash-lite` -> `gemini-1.5-flash` -> `gemini-1.5-flash-8b`) without interrupting your work.
 - **Cozy Warm Cream UI**: The chat interface matches the pet's sprite colors (warm ivory, soft cream, honey accents, lavender code blocks, and sage buttons) for a minimal, distraction-free aesthetic.
-- **Custom Canvas Markdown Parser**: Clean formatting for headings, bullet points, blockquotes, inline code, and syntax-highlighted code blocks rendered directly in pure Tkinter.
-- **Multi-Turn Conversational Memory**: Keeps track of prior messages in the session so you can ask natural follow-up questions about previous explanations.
+- **Custom Text Markdown Parser**: Clean formatting for headings, bullet points, blockquotes, inline code, and syntax-highlighted code blocks rendered directly in pure Tkinter.
 
 ---
 
@@ -69,8 +78,16 @@ Unlike web interfaces where you have to take a screenshot, save it, upload it, a
 | **Capture & Open Chat** | `Ctrl + Alt + S` | Captures screen, opens the chat window, and lets you review or ask custom questions |
 | **Explain via Menu** | Right-click Pet -> `Explain Screen` | Instant capture and automatic explanation |
 | **Open Chat via Menu** | Right-click Pet -> `Open Chat` | Opens the companion chat window |
+| **Change Pet Scale** | Right-click Pet -> `Pet Scale` -> Pick size | Resizes sprite from 1.0x to 6.0x dynamically |
 | **Quit App** | Right-click Pet -> `Quit` | Safely cleans up hotkeys and exits |
 | **Reposition Pet** | Left-click + Drag | Move your companion to any corner of your monitor |
+| **Interrupt Generation** | `Stop` button in chat | Aborts active AI response generation immediately |
+| **Zoom In Text** | `Ctrl + Plus` or `A+` button | Increases text font size in chat display |
+| **Zoom Out Text** | `Ctrl + Minus` or `A-` button | Decreases text font size in chat display |
+| **Reset Zoom** | `Ctrl + 0` | Resets chat font size to default scale |
+| **Open Chat History** | `History` button in chat | Opens SQLite drawer to load or manage past chat sessions |
+| **Start New Chat** | `+ New` button in chat | Starts a fresh session thread |
+| **Remove Single Screenshot**| `✕` button on thumbnail | Removes an individual screenshot from active context |
 | **Add Extra Screenshot** | `+ Add` button in chat | Takes another screenshot and adds it to the AI's current context |
 | **Reset Screenshots** | `Clear` button in chat | Removes stored screenshots for the turn |
 
@@ -80,7 +97,8 @@ Unlike web interfaces where you have to take a screenshot, save it, upload it, a
 
 - **Language**: Python 3.10+
 - **AI Brain**: Google Gemini API via official [`google-genai`](https://github.com/googleapis/python-genai) SDK
-- **GUI Engine**: Python standard `tkinter` with customized transparent canvas overlays and custom double-buffered Markdown rendering
+- **Database**: SQLite 3 (`sqlite3`) for lightweight persistent conversation history
+- **GUI Engine**: Python standard `tkinter` with customized transparent overlays and native text-tag Markdown rendering
 - **Screen Capture**: [`mss`](https://github.com/BoboTiG/python-mss) for ultra-fast, multi-monitor screenshot capture
 - **Image Processing**: [`Pillow (PIL)`](https://python-pillow.org/) for pixel-perfect sprite slicing, scaling, and thumbnail generation
 - **System Hotkeys**: [`pynput`](https://github.com/moses-palmer/pynput) for non-blocking global hotkey listening
@@ -97,14 +115,15 @@ my-study-companion/
 │       └── Basic_Charakter_Spritesheet.png  # 4x4 Pixel art animation sheet
 ├── src/
 │   ├── pet/
-│   │   ├── pet.py            # Pet window, transparent overlay, animation loop
+│   │   ├── pet.py            # Pet window, transparent overlay, FSM & animations
 │   │   └── drag.py           # Drag-and-drop mouse physics
 │   ├── ui/
-│   │   ├── chat.py           # Custom Tkinter canvas-based Markdown renderer
-│   │   └── window.py         # Warm cream chat window, screenshot strip, inputs
+│   │   ├── chat.py           # Custom Tkinter Text Markdown renderer & zoom engine
+│   │   └── window.py         # Warm cream chat window, history drawer, inputs
 │   ├── ai.py                 # Gemini API integration & automatic model fallback
 │   ├── app.py                # Main application orchestrator & event bus
 │   ├── config.py             # Configurable settings (hotkeys, scaling, prompts)
+│   ├── db.py                 # Lightweight SQLite database for chat history
 │   ├── hotkeys.py            # Thread-safe global hotkey listener
 │   ├── memory.py             # Multi-screenshot holder & conversation history
 │   └── screen.py             # High-performance screen capture helper
@@ -167,8 +186,14 @@ Your cute pixel-art companion will appear in the bottom-right corner of your des
 
 ## How It Works
 
-### Pet Animation & Transparency
-`src/pet/pet.py` creates a frameless `tk.Toplevel` window configured with `-transparentcolor` to completely remove background pixels around the sprite. The sprite sheet (`Basic_Charakter_Spritesheet.png`) is sliced into individual 48x48 frames, scaled smoothly using nearest-neighbor interpolation to preserve pixel crispness, and cycled via Tkinter's `after()` event loop.
+### Pet Animation & FSM System
+`src/pet/pet.py` creates a frameless `tk.Toplevel` window configured with `-transparentcolor` to completely remove background pixels around the sprite. An internal Finite State Machine (FSM) manages behavior states:
+- **IdleState**: Plays front-facing idle animations and periodically initiates random 8-directional wandering.
+- **WalkingState**: Moves the window smoothly across screen coordinates while handling screen boundary bounces.
+- **ThinkingState**: Causes Buddy to pace back and forth (left and right) in a small area while Gemini generates answers.
+
+### Persistent SQLite Chat History
+All conversation turns are automatically saved to `study_companion.db` via `src/db.py`. Empty session drafts are automatically purged so your history drawer remains clean and organized.
 
 ### Automatic Model Fallback System
 Rate limits and quotas can disrupt your study sessions. In `src/ai.py`, when a call encounters a `429 Too Many Requests` or `RESOURCE_EXHAUSTED` error, it automatically cycles through fallback models in order:
@@ -179,8 +204,8 @@ gemini-2.5-flash -> gemini-2.5-flash-lite -> gemini-3.5-flash-lite -> gemini-1.5
 
 The active model name is displayed directly on the badge in the chat window header so you always know which model produced the answer.
 
-### Custom Markdown Rendering
-Rather than embedding heavy browser engines (like CEF or Electron), `src/ui/chat.py` implements a lightweight, pure-Python Markdown parser directly onto a Tkinter `Text` widget with custom tags:
+### Custom Markdown Rendering & Zoom
+Rather than embedding heavy browser engines, `src/ui/chat.py` implements a lightweight, pure-Python Markdown parser directly onto a Tkinter `Text` widget with custom tags:
 - **Headings**: Scaled font sizes with distinct warm brown tones
 - **Code Blocks**: Formatted with monospace typography on a soft lavender backdrop
 - **Lists**: Clean hanging indents with bullet symbols

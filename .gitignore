@@ -10,3 +10,5 @@ build/
 .venv/
 venv/
 debug_screenshot.png
+*.db
+study_companion.db
