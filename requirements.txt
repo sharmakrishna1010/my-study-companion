@@ -1,0 +1,5 @@
+google-genai
+mss
+pillow
+pynput
+python-dotenv
