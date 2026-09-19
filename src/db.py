@@ -8,10 +8,33 @@ import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
-
+import os
+import shutil
+import sys
 import config
 
-DB_PATH = config.PROJECT_ROOT / "study_companion.db"
+def get_db_path() -> Path:
+    appdata = os.getenv("APPDATA")
+    if appdata:
+        target_dir = Path(appdata) / "MyStudyCompanion"
+    else:
+        target_dir = Path.home() / ".my_study_companion"
+    
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_db = target_dir / "study_companion.db"
+    
+    # Migrate existing database from project root if target_db does not exist yet
+    if not target_db.exists():
+        project_db = config.PROJECT_ROOT / "study_companion.db"
+        if project_db.exists():
+            try:
+                shutil.copy2(project_db, target_db)
+            except Exception:
+                pass
+
+    return target_db
+
+DB_PATH = get_db_path()
 
 
 def get_connection() -> sqlite3.Connection:

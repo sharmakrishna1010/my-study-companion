@@ -60,7 +60,7 @@ Unlike web interfaces where you have to take a screenshot, save it, upload it, a
 - **FSM-Driven Walking Behavior**: Modular Finite State Machine (FSM) architecture. In idle state, the pet periodically decides to walk in 8 directions across your screen with smooth, mirrored side-walking animations while remaining strictly within screen boundaries.
 - **Dynamic Pet Resizing**: Right-click the pet and pick **Pet Scale** to resize the sprite anywhere from 1.0x up to 6.0x.
 - **One-Shot "Explain Screen"**: Right-click the pet and click **Explain Screen** (or press `Ctrl + Alt + E`) to snap the current screen and have Gemini explain it immediately without typing a single word.
-- **Persistent SQLite Chat History**: All conversations are automatically saved to a lightweight SQLite database (`study_companion.db`). Reopen past chat sessions or delete old threads using the **History** drawer. Empty session drafts are automatically purged.
+- **Persistent SQLite Chat History**: All conversations are automatically saved to a lightweight SQLite database stored safely in your Windows AppData directory (`%APPDATA%\MyStudyCompanion\study_companion.db`). Chat history persists permanently across executable rebuilds, updates, and script restarts. Reopen past chat sessions or delete old threads using the **History** drawer. Empty session drafts are automatically purged.
 - **Dynamic Text Zoom**: Scale response typography instantly using the **A-** / **A+** header buttons or keyboard shortcuts (`Ctrl + Plus`, `Ctrl + Minus`, `Ctrl + 0`).
 - **High-Precision Trackpad & Arrow Key Navigation**: Instant, zero-deadzone trackpad/mousewheel scrolling along with full keyboard arrow key (`Up`/`Down`) and page navigation.
 - **Global System Hotkeys**: Works from anywhere on your computer, even while gaming or working in full-screen IDEs.
@@ -216,7 +216,9 @@ To launch **My Study Companion** instantly without opening a terminal window or 
 - **ThinkingState**: Causes Buddy to pace back and forth (left and right) in a small area while Gemini generates answers.
 
 ### Persistent SQLite Chat History
-All conversation turns are automatically saved to `study_companion.db` via `src/db.py`. Empty session drafts are automatically purged so your history drawer remains clean and organized.
+All conversation turns are automatically saved to a lightweight SQLite database (`study_companion.db`) stored in your system AppData directory (`%APPDATA%\MyStudyCompanion\study_companion.db`). 
+
+By storing the database in your system AppData directory, your chat history is permanently preserved and protected across executable rebuilds, software updates, or script restarts. Empty session drafts are automatically purged so your history drawer remains clean and organized.
 
 ### Automatic Model Fallback System
 Rate limits and quotas can disrupt your study sessions. In `src/ai.py`, when a call encounters a `429 Too Many Requests` or `RESOURCE_EXHAUSTED` error, it automatically cycles through fallback models in order:
