@@ -29,6 +29,7 @@
   - [Prerequisites](#prerequisites)
   - [Installation & Setup](#installation--setup)
   - [Getting a Gemini API Key](#getting-a-gemini-api-key)
+  - [1-Click Launchers & Standalone Executable](#1-click-launchers--standalone-executable)
 - [How It Works](#how-it-works)
   - [Pet Animation & FSM System](#pet-animation--fsm-system)
   - [Persistent SQLite Chat History](#persistent-sqlite-chat-history)
@@ -127,6 +128,9 @@ my-study-companion/
 │   ├── hotkeys.py            # Thread-safe global hotkey listener
 │   ├── memory.py             # Multi-screenshot holder & conversation history
 │   └── screen.py             # High-performance screen capture helper
+├── StudyBuddy.vbs             # Silent VBScript launcher
+├── StudyBuddy.bat             # Silent batch launcher
+├── create_desktop_shortcut.ps1# Desktop shortcut generator
 ├── .env.example              # Sample environment configuration
 ├── .gitignore
 ├── requirements.txt          # Python dependencies
@@ -181,6 +185,25 @@ my-study-companion/
    ```
 
 Your cute pixel-art companion will appear in the bottom-right corner of your desktop.
+
+---
+
+### 1-Click Launchers & Standalone Executable
+
+To launch **My Study Companion** instantly without opening a terminal window or navigating to project folders, choose any of the options below:
+
+1. **Windows Start Menu & Desktop Shortcuts (Recommended)**:
+   A `Study Buddy` shortcut is created in both your **Windows Start Menu** and **Desktop**. You can press the `Win` key, type **Study Buddy**, and press `Enter` to launch silently without any terminal window.
+   *(Right-click `create_desktop_shortcut.ps1` and select **Run with PowerShell** to regenerate shortcuts anytime).*
+
+2. **Automated Executable Build Script (`build_exe.ps1`)**:
+   Run `build_exe.ps1` to compile `dist/StudyBuddy/StudyBuddy.exe` with PyInstaller, copy `.env`, and automatically register the `.exe` in your Windows Start Menu and Desktop.
+
+3. **Silent VBScript & Batch Launchers (`StudyBuddy.vbs` / `StudyBuddy.bat`)**:
+   Double-click `StudyBuddy.vbs` or `StudyBuddy.bat` in the project root folder to launch `pythonw.exe` in the background with no visible console window.
+
+4. **Standalone Executable (`dist/StudyBuddy/StudyBuddy.exe`)**:
+   A standalone Windows binary compiled via PyInstaller is available at `dist/StudyBuddy/StudyBuddy.exe`.
 
 ---
 

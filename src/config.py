@@ -6,12 +6,16 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
+import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ASSETS_DIR = PROJECT_ROOT / "assets"
+if getattr(sys, 'frozen', False):
+    # PyInstaller extracted temporary directory
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).resolve().parents[1]
+
+PROJECT_ROOT = BASE_DIR
+ASSETS_DIR = BASE_DIR / "assets"
 PET_ASSETS_DIR = ASSETS_DIR / "pet"
 SPRITESHEET_PATH = PET_ASSETS_DIR / "Basic_Charakter_Spritesheet.png"
 
@@ -19,7 +23,22 @@ SPRITESHEET_PATH = PET_ASSETS_DIR / "Basic_Charakter_Spritesheet.png"
 # Environment / API
 # ---------------------------------------------------------------------------
 
-load_dotenv(PROJECT_ROOT / ".env")
+env_candidates = []
+if getattr(sys, 'frozen', False):
+    exe_dir = Path(sys.executable).resolve().parent
+    env_candidates.append(exe_dir / ".env")
+    env_candidates.append(exe_dir.parent / ".env")
+    env_candidates.append(exe_dir.parent.parent / ".env")
+
+env_candidates.append(Path.cwd() / ".env")
+env_candidates.append(Path(__file__).resolve().parents[1] / ".env")
+
+for env_path in env_candidates:
+    if env_path.is_file():
+        load_dotenv(env_path)
+        break
+else:
+    load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
